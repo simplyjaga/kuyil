@@ -2,6 +2,8 @@
 
 import msgpack
 
+MAX_BUFFER_SIZE = 16 * 1024 * 1024
+
 
 def encode_message(message: object) -> bytes:
     """Serialize one Python value into a MessagePack byte sequence."""
@@ -12,7 +14,10 @@ class MessageDecoder:
     """Incrementally decode MessagePack messages received over TCP."""
 
     def __init__(self) -> None:
-        self._unpacker = msgpack.Unpacker(raw=False)
+        self._unpacker = msgpack.Unpacker(
+            raw=False,
+            max_buffer_size=MAX_BUFFER_SIZE,
+        )
 
     def feed(self, data: bytes) -> list[object]:
         """Feed received bytes and return every complete decoded message."""
