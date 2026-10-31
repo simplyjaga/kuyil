@@ -26,6 +26,7 @@ class EpollServer:
 
         self._epoll = select.epoll()
         self._clients: dict[int, ClientConnection] = {}
+        self.active_clients = 0
         self._closed = False
         self._epoll.register(self._server.fileno(), select.EPOLLIN)
 
@@ -61,16 +62,21 @@ class EpollServer:
 
             client_socket.setblocking(False)
             fd = client_socket.fileno()
-            self._clients[fd] = ClientConnection(client_socket)
+            connection = ClientConnection(client_socket)
 
             try:
                 self._epoll.register(fd, select.EPOLLIN)
             except OSError as exc:
                 print(f"Could not register {address}: {exc}")
-                self._close_client(fd)
+                client_socket.close()
                 continue
 
-            print(f"Connected: {address}")
+            self._clients[fd] = connection
+            self.active_clients += 1
+            print(
+                f"Connected: {address} | "
+                f"Active clients: {self.active_clients}"
+            )
 
     def _handle_client_event(self, fd: int, event_mask: int) -> None:
         connection = self._clients.get(fd)
@@ -131,7 +137,11 @@ class EpollServer:
             pass
 
         connection.socket.close()
-        print(f"Connection closed: fd {fd}")
+        self.active_clients -= 1
+        print(
+            f"Disconnected: fd {fd} | "
+            f"Active clients: {self.active_clients}"
+        )
 
     def close(self) -> None:
         """Close all client sockets, the listening socket, and epoll."""
