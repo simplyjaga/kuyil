@@ -129,7 +129,7 @@ class EpollServer:
         """Watch writes only while there are response bytes waiting."""
         events = []
 
-        if not connection.read_closed:
+        if not connection.peer_finished_sending:
             events.append(select.EPOLLIN)
 
         if connection.wants_write:
