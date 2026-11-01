@@ -15,10 +15,10 @@ class ClientConnection:
         self.socket = sock
         self.decoder = MessageDecoder()
         self.output_buffer = bytearray()
-        self.read_closed = False
+        self.peer_finished_sending = False
 
-    def receive_available(self) -> bool:
-        """Read available bytes and queue responses; return False on failure."""
+    def read_available_data(self) -> bool:
+        """Read available data and queue responses; return False only on failure."""
         while True:
             try:
                 data = self.socket.recv(RECV_SIZE)
@@ -28,7 +28,7 @@ class ClientConnection:
                 return False
 
             if not data:
-                self.read_closed = True
+                self.peer_finished_sending = True
                 return True
 
             try:
@@ -63,5 +63,5 @@ class ClientConnection:
         return bool(self.output_buffer)
 
     @property
-    def is_finished(self) -> bool:
-        return self.read_closed and not self.output_buffer
+    def can_close(self) -> bool:
+        return self.peer_finished_sending and not self.output_buffer
