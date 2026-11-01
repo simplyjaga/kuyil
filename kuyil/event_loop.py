@@ -11,6 +11,19 @@ MAX_EVENTS = 100
 POLL_TIMEOUT = 1.0
 
 
+def _has_event(event_mask: int, event: int) -> bool:
+    """Return whether an event flag is present in an epoll event mask."""
+    return bool(event_mask & event)
+
+
+def _combine_events(*events: int) -> int:
+    """Combine event flags into the mask expected by epoll."""
+    event_mask = 0
+    for event in events:
+        event_mask |= event
+    return event_mask
+
+
 class EpollServer:
     """Accept clients and dispatch their socket readiness events."""
 
@@ -83,19 +96,26 @@ class EpollServer:
         if connection is None:
             return
 
-        read_events = select.EPOLLIN | select.EPOLLRDHUP | select.EPOLLHUP
+        is_readable = (
+            _has_event(event_mask, select.EPOLLIN)
+            or _has_event(event_mask, select.EPOLLRDHUP)
+            or _has_event(event_mask, select.EPOLLHUP)
+        )
 
-        if event_mask & read_events:
+        if is_readable:
             if not connection.receive_available():
                 self._close_client(fd)
                 return
 
-        if event_mask & select.EPOLLOUT:
+        is_writable = _has_event(event_mask, select.EPOLLOUT)
+        if is_writable:
             if not connection.send_pending():
                 self._close_client(fd)
                 return
 
-        if event_mask & (select.EPOLLERR | select.EPOLLHUP):
+        has_error = _has_event(event_mask, select.EPOLLERR)
+        has_hangup = _has_event(event_mask, select.EPOLLHUP)
+        if has_error or has_hangup:
             self._close_client(fd)
             return
 
@@ -107,20 +127,22 @@ class EpollServer:
 
     def _update_interest(self, fd: int, connection: ClientConnection) -> None:
         """Watch writes only while there are response bytes waiting."""
-        events = 0
+        events = []
 
         if not connection.read_closed:
-            events |= select.EPOLLIN
+            events.append(select.EPOLLIN)
 
         if connection.wants_write:
-            events |= select.EPOLLOUT
+            events.append(select.EPOLLOUT)
 
         if not events:
             self._close_client(fd)
             return
 
+        event_mask = _combine_events(*events)
+
         try:
-            self._epoll.modify(fd, events)
+            self._epoll.modify(fd, event_mask)
         except OSError as exc:
             print(f"Could not update epoll interest for fd {fd}: {exc}")
             self._close_client(fd)
