@@ -103,7 +103,7 @@ class EpollServer:
         )
 
         if is_readable:
-            if not connection.receive_available():
+            if not connection.read_available_data():
                 self._close_client(fd)
                 return
 
@@ -119,7 +119,7 @@ class EpollServer:
             self._close_client(fd)
             return
 
-        if connection.is_finished:
+        if connection.can_close:
             self._close_client(fd)
             return
 
