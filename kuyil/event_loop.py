@@ -102,16 +102,14 @@ class EpollServer:
             or _has_event(event_mask, select.EPOLLHUP)
         )
 
-        if is_readable:
-            if not connection.read_available_data():
-                self._close_client(fd)
-                return
+        if is_readable and not connection.read_available_data():
+            self._close_client(fd)
+            return
 
         is_writable = _has_event(event_mask, select.EPOLLOUT)
-        if is_writable:
-            if not connection.send_pending():
-                self._close_client(fd)
-                return
+        if is_writable and not connection.send_pending():
+            self._close_client(fd)
+            return
 
         has_error = _has_event(event_mask, select.EPOLLERR)
         has_hangup = _has_event(event_mask, select.EPOLLHUP)
