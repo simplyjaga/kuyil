@@ -1,40 +1,25 @@
-"""Command handling and the in-memory key-value store for Kuyil."""
+"""Command handling for Kuyil."""
 
 import time
-from dataclasses import dataclass
+
+from kuyil.store import store
 
 
-@dataclass
-class StoreEntry:
-    """A stored value plus its metadata.
-
-    Extensible: future attributes (encoding, last-access time for LRU,
-    type information) become new fields here.
-    """
-
-    value: object
-    expires_at: float | None = None
-
-
-_STORE: dict[str, StoreEntry] = {}
-
-
-def _get_live_entry(key: object) -> StoreEntry | None:
-    """Return the stored entry, evicting the key first if it has expired."""
-    entry = _STORE.get(key)  # type: ignore[arg-type]
-    if entry is None:
+def _parse_expiry_seconds(value: object) -> float | None:
+    """Return the expiry duration in seconds, or None if invalid."""
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError:
+            return None
+    if not isinstance(value, (int, float)) or value <= 0:
         return None
-
-    if entry.expires_at is not None and entry.expires_at <= time.time():
-        del _STORE[key]  # type: ignore[arg-type]
-        return None
-
-    return entry
+    return float(value)
 
 
 def _handle_set(request: list) -> object:
-    """SET key value [EX seconds]"""
-    if len(request) not in (3, 5):
+    """SET key value [EX seconds] — options parsed pairwise after the value."""
+    if len(request) < 3:
         return "ERR wrong number of arguments for 'set' command"
 
     key, value = request[1], request[2]
@@ -42,23 +27,25 @@ def _handle_set(request: list) -> object:
         return "ERR key must be a string"
 
     expires_at = None
-    if len(request) == 5:
-        option = request[3]
-        if not isinstance(option, str) or option.upper() != "EX":
+    i = 3
+    while i < len(request):
+        option = request[i]
+        if not isinstance(option, str):
+            return "ERR syntax error"
+        option = option.upper()
+
+        if option == "EX":
+            if i + 1 >= len(request):
+                return "ERR syntax error"
+            seconds = _parse_expiry_seconds(request[i + 1])
+            if seconds is None:
+                return "ERR invalid expire time in 'set' command"
+            expires_at = time.time() + seconds
+            i += 2
+        else:
             return "ERR syntax error"
 
-        seconds = request[4]
-        if isinstance(seconds, str):
-            try:
-                seconds = float(seconds)
-            except ValueError:
-                return "ERR invalid expire time in 'set' command"
-        if not isinstance(seconds, (int, float)) or seconds <= 0:
-            return "ERR invalid expire time in 'set' command"
-
-        expires_at = time.time() + seconds
-
-    _STORE[key] = StoreEntry(value=value, expires_at=expires_at)
+    store.set(key, value, expires_at=expires_at)
     return "OK"
 
 
@@ -67,7 +54,7 @@ def _handle_get(request: list) -> object:
     if len(request) != 2:
         return "ERR wrong number of arguments for 'get' command"
 
-    entry = _get_live_entry(request[1])
+    entry = store.get(request[1])
     if entry is None:
         return None
     return entry.value
@@ -78,7 +65,7 @@ def _handle_ttl(request: list) -> object:
     if len(request) != 2:
         return "ERR wrong number of arguments for 'ttl' command"
 
-    entry = _get_live_entry(request[1])
+    entry = store.get(request[1])
     if entry is None:
         return -2
     if entry.expires_at is None:
