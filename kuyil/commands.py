@@ -7,14 +7,11 @@ from kuyil.store import store
 
 def _parse_expiry_seconds(value: object) -> float | None:
     """Return the expiry duration in seconds, or None if invalid."""
-    if isinstance(value, str):
-        try:
-            value = float(value)
-        except ValueError:
-            return None
-    if not isinstance(value, (int, float)) or value <= 0:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
         return None
-    return float(value)
+    return seconds if seconds > 0 else None
 
 
 def _handle_set(request: list) -> object:
@@ -76,18 +73,15 @@ def _handle_expire(request: list) -> object:
     if len(request) != 3:
         return "ERR wrong number of arguments for 'expire' command"
 
-    key, raw = request[1], request[2]
-    if isinstance(raw, str):
-        try:
-            raw = float(raw)
-        except ValueError:
-            return "ERR value is not an integer or out of range"
-    if not isinstance(raw, (int, float)):
+    key = request[1]
+    try:
+        seconds = float(request[2])
+    except (TypeError, ValueError):
         return "ERR value is not an integer or out of range"
 
-    if raw <= 0:
+    if seconds <= 0:
         return 1 if store.delete(key) else 0
-    return 1 if store.expire(key, time.time() + raw) else 0
+    return 1 if store.set_expiry(key, time.time() + seconds) else 0
 
 
 def _handle_ttl(request: list) -> object:

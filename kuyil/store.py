@@ -47,7 +47,7 @@ class Store:
         del self._data[key]
         return True
 
-    def expire(self, key: str, expires_at: float) -> bool:
+    def set_expiry(self, key: str, expires_at: float) -> bool:
         """Set an expiry timestamp on a live key; return True if it exists."""
         entry = self.get(key)
         if entry is None:
