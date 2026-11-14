@@ -1,19 +1,31 @@
 """Command handling and the in-memory key-value store for Kuyil."""
 
 import time
-
-# Each entry maps a key to (value, expires_at_epoch_or_None).
-_STORE: dict[str, tuple[object, float | None]] = {}
+from dataclasses import dataclass
 
 
-def _get_live_entry(key: object) -> tuple[object, float | None] | None:
+@dataclass
+class StoreEntry:
+    """A stored value plus its metadata.
+
+    Extensible: future attributes (encoding, last-access time for LRU,
+    type information) become new fields here.
+    """
+
+    value: object
+    expires_at: float | None = None
+
+
+_STORE: dict[str, StoreEntry] = {}
+
+
+def _get_live_entry(key: object) -> StoreEntry | None:
     """Return the stored entry, evicting the key first if it has expired."""
     entry = _STORE.get(key)  # type: ignore[arg-type]
     if entry is None:
         return None
 
-    expires_at = entry[1]
-    if expires_at is not None and expires_at <= time.time():
+    if entry.expires_at is not None and entry.expires_at <= time.time():
         del _STORE[key]  # type: ignore[arg-type]
         return None
 
@@ -46,7 +58,7 @@ def _handle_set(request: list) -> object:
 
         expires_at = time.time() + seconds
 
-    _STORE[key] = (value, expires_at)
+    _STORE[key] = StoreEntry(value=value, expires_at=expires_at)
     return "OK"
 
 
@@ -58,7 +70,7 @@ def _handle_get(request: list) -> object:
     entry = _get_live_entry(request[1])
     if entry is None:
         return None
-    return entry[0]
+    return entry.value
 
 
 def _handle_ttl(request: list) -> object:
@@ -69,9 +81,9 @@ def _handle_ttl(request: list) -> object:
     entry = _get_live_entry(request[1])
     if entry is None:
         return -2
-    if entry[1] is None:
+    if entry.expires_at is None:
         return -1
-    return int(entry[1] - time.time())
+    return int(entry.expires_at - time.time())
 
 
 def handle_command(request: object) -> object:
