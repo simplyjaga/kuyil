@@ -7,14 +7,11 @@ from kuyil.store import store
 
 def _parse_expiry_seconds(value: object) -> float | None:
     """Return the expiry duration in seconds, or None if invalid."""
-    if isinstance(value, str):
-        try:
-            value = float(value)
-        except ValueError:
-            return None
-    if not isinstance(value, (int, float)) or value <= 0:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
         return None
-    return float(value)
+    return seconds if seconds > 0 else None
 
 
 def _handle_set(request: list) -> object:
@@ -60,6 +57,33 @@ def _handle_get(request: list) -> object:
     return entry.value
 
 
+def _handle_del(request: list) -> object:
+    """DEL key [key ...] — return how many live keys were removed."""
+    if len(request) < 2:
+        return "ERR wrong number of arguments for 'del' command"
+
+    return sum(1 for key in request[1:] if store.delete(key))
+
+
+def _handle_expire(request: list) -> object:
+    """EXPIRE key seconds — 1 if set, 0 if the key is missing.
+
+    A non-positive delay deletes the key immediately, like Redis.
+    """
+    if len(request) != 3:
+        return "ERR wrong number of arguments for 'expire' command"
+
+    key = request[1]
+    try:
+        seconds = float(request[2])
+    except (TypeError, ValueError):
+        return "ERR value is not an integer or out of range"
+
+    if seconds <= 0:
+        return 1 if store.delete(key) else 0
+    return 1 if store.set_expiry(key, time.time() + seconds) else 0
+
+
 def _handle_ttl(request: list) -> object:
     """TTL key — seconds remaining, -1 if no expiry, -2 if missing."""
     if len(request) != 2:
@@ -97,5 +121,11 @@ def handle_command(request: object) -> object:
 
     if name == "TTL":
         return _handle_ttl(request)
+
+    if name == "DEL":
+        return _handle_del(request)
+
+    if name == "EXPIRE":
+        return _handle_expire(request)
 
     return f"ERR unknown command '{name}'"

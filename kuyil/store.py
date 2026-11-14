@@ -40,5 +40,20 @@ class Store:
 
         return entry
 
+    def delete(self, key: str) -> bool:
+        """Remove a live key; return True if one existed."""
+        if self.get(key) is None:
+            return False
+        del self._data[key]
+        return True
+
+    def set_expiry(self, key: str, expires_at: float) -> bool:
+        """Set an expiry timestamp on a live key; return True if it exists."""
+        entry = self.get(key)
+        if entry is None:
+            return False
+        entry.expires_at = expires_at
+        return True
+
 
 store = Store()
