@@ -1,55 +1,53 @@
 # Kuyil Notes
 
-Design and protocol learnings collected while reimplementing Redis internals.
+Learnings collected while reimplementing Redis internals.
 
-## Wire protocol: MessagePack vs RESP
+## Divergences from the Redis Internals series
 
-- RESP is a string protocol — every command arrives as an array of bulk
-  strings. `EXPIRE foo 10` reaches the server as `["EXPIRE", "foo", "10"]`
-  with `10` as bytes, not a number.
-- Redis converts each argument lazily at the command layer
-  (`getLongLongFromObjectOrReply` and friends). Same pattern Kuyil uses.
-- MessagePack is typed: clients may send real ints/floats. Handlers must
-  accept `"10"` and `10` uniformly — `float(value)` in a try/except
-  covers both without isinstance chains.
-- RESP3 (Redis 6+) added typed replies (numbers, booleans, nulls) but
-  commands are still sent as string arrays.
+- **Python instead of Go** — the course implements in Go; Kuyil is Python.
+- **MessagePack instead of RESP** — typed wire protocol, so command args
+  may arrive as real ints/floats, not just bytes. Consequence: Kuyil is
+  not a drop-in Redis replacement and needs its own client.
+- **Radix tree for key eviction/expiry** — upcoming deviation: keys with
+  deadlines kept ordered by expiry instead of random sampling, so the
+  sweep walks the oldest deadlines and stops at the first live key.
 
-## Variadic command parsing
+## Topic notes
 
-- Real Redis `SET` takes variadic trailing options:
+### Variadic command parsing
+
+- Real Redis `SET` takes variadic options:
   `SET key value [NX|XX] [GET] [EX s|PX ms|EXAT t|PXAT t|KEEPTTL]`.
-- It walks argv in a loop — each option consumes itself plus however many
-  arguments it needs (`NX` takes 0, `EX` takes 1). Kuyil mirrors this:
-  fixed-arity checks like `len(request) == 5` can't express this.
+- Parsed by walking argv in a loop — each option consumes itself plus
+  however many arguments it needs (`NX` takes 0, `EX` takes 1). Fixed
+  arity checks can't express this.
 
-## Expiry
+### Expiry
 
-- Two mechanisms, like real Redis:
-  - **Lazy (passive):** on every access, if `expires_at <= now`, evict and
-    report the key as missing. Implemented in `Store.get()`.
-  - **Active:** Redis samples ~20 keys that have TTLs every 100ms and
-    deletes dead ones; if >25% of the sample was dead it resamples
-    immediately. Lazy expiry alone can't reclaim keys nobody touches.
-    (Not yet implemented — natural fit for the epoll loop's poll timeout.)
-- `EXPIRE key 0` (or negative) deletes the key immediately, as in Redis.
+- **Lazy (passive):** on access, if `expires_at <= now`, evict and report
+  missing. Implemented in `Store.get()`.
+- **Active:** Redis samples ~20 keys that have TTLs every 100ms, deletes
+  dead ones, resamples if >25% were dead — lazy expiry alone can't
+  reclaim keys nobody touches. Kuyil will use a radix tree instead
+  (see divergences).
+- `EXPIRE key 0` (or negative) deletes immediately, as in Redis.
 - `TTL` sentinels: `-2` missing, `-1` no expiry. `int()` truncation can
-  report 0 for sub-second keys — faithful to Redis's own behavior.
+  report 0 for sub-second keys — faithful to Redis.
+- `SET` without an expiry option clears an existing TTL on the key.
 
-## Stored values as objects
+### Stored values as objects
 
-- Values are stored as `StoreEntry` (value + expires_at) rather than bare
-  values or positional tuples — the seed of Redis's `robj`, which carries
-  type, encoding, and LRU metadata alongside the value.
+- Values are stored as `StoreEntry` (value + metadata) rather than bare
+  values — the seed of Redis's `robj`, which carries type, encoding,
+  and LRU metadata alongside the value.
 
-## Event loop & concurrency
+### Event loop & concurrency
 
-- The server is single-threaded: Linux `epoll` watches the listen socket
-  plus every client fd; readable events drive per-client
-  `ClientConnection` state machines with an output buffer watched via
-  `EPOLLOUT` only when data is pending.
+- Single-threaded: Linux `epoll` watches the listen socket plus every
+  client fd; readable events drive per-client `ClientConnection` state
+  machines. `EPOLLOUT` is watched only while response bytes are pending.
 
-## Pipelining
+### Pipelining
 
 - The server already supports client pipelining for free: msgpack frames
   are self-delimiting and `MessageDecoder.feed()` returns all complete
