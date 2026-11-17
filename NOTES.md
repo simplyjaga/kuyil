@@ -8,9 +8,10 @@ Learnings collected while reimplementing Redis internals.
 - **MessagePack instead of RESP** — typed wire protocol, so command args
   may arrive as real ints/floats, not just bytes. Consequence: Kuyil is
   not a drop-in Redis replacement and needs its own client.
-- **Radix tree for key eviction/expiry** — upcoming deviation: keys with
-  deadlines kept ordered by expiry instead of random sampling, so the
-  sweep walks the oldest deadlines and stops at the first live key.
+- **Radix tree for key eviction/expiry** — keys approaching their
+  deadline are kept ordered in a compressed radix tree so the sweep
+  walks the nearest deadlines first. Sampling still runs (as in
+  Redis 6); the tree supplements it with hints, it does not replace it.
 
 ## Topic notes
 
@@ -26,10 +27,14 @@ Learnings collected while reimplementing Redis internals.
 
 - **Lazy (passive):** on access, if `expires_at <= now`, evict and report
   missing. Implemented in `Store.get()`.
-- **Active:** Redis samples ~20 keys that have TTLs every 100ms, deletes
-  dead ones, resamples if >25% were dead — lazy expiry alone can't
-  reclaim keys nobody touches. Kuyil will use a radix tree instead
-  (see divergences).
+- **Active (implemented, Redis 6 model):** three structures —
+  `_data` (pairs), `_expires` (authoritative deadlines), and a radix
+  `_hints` tree. Every ~100ms the event loop runs a bounded cycle:
+  drain due hints, then sample up to 20 keys from the expires table,
+  deleting dead ones and recording near-dead ones as hints. Repeats
+  while >25% of a sample was dead or the time budget is spent.
+  Hints are verified against `_expires` before deleting, so stale
+  hints (updated TTL, deleted keys) can never kill a live key.
 - `EXPIRE key 0` (or negative) deletes immediately, as in Redis.
 - `TTL` sentinels: `-2` missing, `-1` no expiry. `int()` truncation can
   report 0 for sub-second keys — faithful to Redis.

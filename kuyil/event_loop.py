@@ -2,13 +2,16 @@
 
 import select
 import socket
+import time
 
 from kuyil.client import ClientConnection
+from kuyil.store import store
 
 HOST = "127.0.0.1"
 PORT = 6380
 MAX_EVENTS = 100
-POLL_TIMEOUT = 1.0
+POLL_TIMEOUT = 0.1
+EXPIRE_INTERVAL = 0.1
 
 
 def _has_event(event_mask: int, event: int) -> bool:
@@ -46,7 +49,12 @@ class EpollServer:
         print(f"Kuyil epoll server listening on {HOST}:{PORT}")
 
     def run(self) -> None:
-        """Wait for readiness events until interrupted."""
+        """Wait for readiness events until interrupted.
+
+        Also runs the periodic active-expiration cycle, the way Redis's
+        serverCron interleaves maintenance with the event loop.
+        """
+        last_expire = time.monotonic()
         try:
             while True:
                 try:
@@ -59,6 +67,12 @@ class EpollServer:
                         self._accept_connections()
                     else:
                         self._handle_client_event(fd, event_mask)
+
+                if time.monotonic() - last_expire >= EXPIRE_INTERVAL:
+                    removed = store.expire_cycle()
+                    if removed:
+                        print(f"expire cycle: removed {removed} keys")
+                    last_expire = time.monotonic()
         finally:
             self.close()
 
