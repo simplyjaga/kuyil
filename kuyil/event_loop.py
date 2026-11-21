@@ -76,9 +76,14 @@ class EpollServer:
 
                 now = time.monotonic()
                 if now >= next_expire_cycle:
-                    store.active_expire_cycle(
+                    sampled, expired, elapsed = store.active_expire_cycle(
                         time_budget=ACTIVE_EXPIRE_TIME_BUDGET
                     )
+                    if expired:
+                        print(
+                            f"expire cycle: deleted {expired} expired keys "
+                            f"({sampled} sampled in {elapsed*1000:.1f}ms)"
+                        )
                     next_expire_cycle += ACTIVE_EXPIRE_INTERVAL
 
                     # Do not run catch-up cycles if the event loop was delayed.
