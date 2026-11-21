@@ -2,13 +2,20 @@
 
 import select
 import socket
+import time
 
 from kuyil.client import ClientConnection
+from kuyil.store import store
 
 HOST = "127.0.0.1"
 PORT = 6380
 MAX_EVENTS = 100
 POLL_TIMEOUT = 1.0
+
+# Redis 6's default server frequency is 10 Hz. Its slow expiration cycle
+# may consume up to 25% of one 100 ms period (25 ms).
+ACTIVE_EXPIRE_INTERVAL = 0.1
+ACTIVE_EXPIRE_TIME_BUDGET = 0.025
 
 
 def _has_event(event_mask: int, event: int) -> bool:
@@ -46,11 +53,18 @@ class EpollServer:
         print(f"Kuyil epoll server listening on {HOST}:{PORT}")
 
     def run(self) -> None:
-        """Wait for readiness events until interrupted."""
+        """Wait for readiness events and run periodic expiry maintenance."""
+        next_expire_cycle = time.monotonic() + ACTIVE_EXPIRE_INTERVAL
+
         try:
             while True:
                 try:
-                    events = self._epoll.poll(POLL_TIMEOUT, MAX_EVENTS)
+                    until_expire = max(
+                        0.0, next_expire_cycle - time.monotonic()
+                    )
+                    events = self._epoll.poll(
+                        min(POLL_TIMEOUT, until_expire), MAX_EVENTS
+                    )
                 except InterruptedError:
                     continue
 
@@ -59,6 +73,24 @@ class EpollServer:
                         self._accept_connections()
                     else:
                         self._handle_client_event(fd, event_mask)
+
+                now = time.monotonic()
+                if now >= next_expire_cycle:
+                    sampled, expired, elapsed = store.active_expire_cycle(
+                        time_budget=ACTIVE_EXPIRE_TIME_BUDGET
+                    )
+                    if expired:
+                        print(
+                            f"expire cycle: deleted {expired} expired keys "
+                            f"({sampled} sampled in {elapsed*1000:.1f}ms)"
+                        )
+                    next_expire_cycle += ACTIVE_EXPIRE_INTERVAL
+
+                    # Do not run catch-up cycles if the event loop was delayed.
+                    if next_expire_cycle <= time.monotonic():
+                        next_expire_cycle = (
+                            time.monotonic() + ACTIVE_EXPIRE_INTERVAL
+                        )
         finally:
             self.close()
 
