@@ -8,6 +8,10 @@ Learnings collected while reimplementing Redis internals.
 - **MessagePack instead of RESP** — typed wire protocol, so command args
   may arrive as real ints/floats, not just bytes. Consequence: Kuyil is
   not a drop-in Redis replacement and needs its own client.
+- **Radix tree for the expires table** — Kuyil stores `Store._expires`
+  as a compressed radix tree keyed by key name (the Redis 7 design),
+  sampled via random walks to leaves. The series' Redis-6 model uses a
+  plain hash table plus adaptive sampling.
 
 ## Topic notes
 
@@ -29,9 +33,10 @@ Learnings collected while reimplementing Redis internals.
   time budget. This is adaptive cleanup, not a full scan.
 - Redis stores expiration metadata separately from the main keyspace.
   Kuyil mirrors this with Store._expires.
-- Kuyil maintains a dense list and key-to-position map alongside the
-  expires dictionary. Python dict has no O(1) random-entry operation;
-  this index lets us sample keys without copying the entire dictionary.
+- Kuyil's expires table is a compressed radix tree (kuyil/rax.py) keyed
+  by key name — the Redis 7 approach. A leaf holds the authoritative
+  deadline; sampling descends random child edges to a leaf, so no
+  auxiliary index or key-list copy is needed.
 - **Time budget:** Redis 6's slow cycle uses up to 25% of the server.hz
   period. At the default 10 Hz, that is 25 ms per 100 ms period. Kuyil
   uses the same starting values in its epoll event loop.
