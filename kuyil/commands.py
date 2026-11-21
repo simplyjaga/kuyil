@@ -92,9 +92,11 @@ def _handle_ttl(request: list) -> object:
     entry = store.get(request[1])
     if entry is None:
         return -2
-    if entry.expires_at is None:
+
+    expires_at = store.get_expiry(request[1])
+    if expires_at is None:
         return -1
-    return int(entry.expires_at - time.time())
+    return int(expires_at - time.time())
 
 
 def handle_command(request: object) -> object:
