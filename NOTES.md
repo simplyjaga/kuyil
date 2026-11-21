@@ -8,6 +8,12 @@ Learnings collected while reimplementing Redis internals.
 - **MessagePack instead of RESP** — typed wire protocol, so command args
   may arrive as real ints/floats, not just bytes. Consequence: Kuyil is
   not a drop-in Redis replacement and needs its own client.
+- **Expires index instead of radix tree** — Kuyil samples TTL keys via a
+  dense list + position map (O(1) sample and delete). A compressed radix
+  tree keyed by name (the Redis 7 `db->expires` design) was also
+  implemented and evaluated — it folds dict and index into one structure
+  and samples via random walks — but the simpler list index was kept;
+  the rax work remains in git history.
 
 ## Topic notes
 
@@ -38,6 +44,15 @@ Learnings collected while reimplementing Redis internals.
 - **Scope:** Kuyil currently implements the slow cycle only. Redis also
   has a fast cycle, multiple databases, tunable active-expire effort,
   and replication/AOF propagation, which are outside this step.
+- **Why no GC/sweeper thread:** single-threaded is the value — every
+  command runs atomically with zero locking. A sweeper thread touching
+  dict/expires would force locks around every command and concurrent
+  data structures throughout. Expiry is also only an optimization
+  (passive expiry already guarantees correctness), so it can be
+  best-effort sampling rather than a thorough scan, bounded by a time
+  budget for predictable tail latency. Same pattern as incremental
+  rehashing and active defrag. Redis does use BIO threads, but only
+  for offloadable blocking work (UNLINK, fsync) — never core state.
 - EXPIRE key 0 (or negative) deletes immediately.
 - TTL sentinels: -2 missing, -1 no expiry. int() truncation can report
   0 for sub-second keys — faithful to Redis.
