@@ -77,9 +77,14 @@ Learnings collected while reimplementing Redis internals.
 
 ### Pipelining
 
-- The server already supports client pipelining for free: msgpack frames
-  are self-delimiting and MessageDecoder.feed() returns all complete
+- The server supports client pipelining for free: msgpack frames are
+  self-delimiting and MessageDecoder.feed() returns all complete
   messages per recv(), so N commands in one write produce N buffered
-  responses in one read.
-- Missing piece: cli.py sends one command per prompt. Client-side
-  batching is the remaining work for the pipelining episode.
+  responses in one read. Pipelining is a client-side optimization —
+  the server cannot tell batched bytes from trickled ones.
+- cli.py batches commands separated by | : each segment is shlex-split,
+  all requests are concatenated into one sendall(), then the client
+  recvs until all N responses arrive (responses may span TCP reads).
+- Response pairing is positional — like RESP, there are no request IDs;
+  TCP byte order guarantees the k-th response belongs to the k-th
+  request.
