@@ -1,10 +1,9 @@
 import socket
 
+from kuyil import HOST, PORT
 from kuyil.commands import handle_command
 from kuyil.protocol import MessageDecoder, encode_message
 
-HOST = "127.0.0.1"
-PORT = 6380
 RECV_SIZE = 4096
 
 

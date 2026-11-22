@@ -5,10 +5,9 @@ import socket
 import sys
 from urllib.parse import urlparse
 
+from kuyil import HOST, PORT
 from kuyil.protocol import MessageDecoder, encode_message
 
-HOST = "127.0.0.1"
-PORT = 6380
 RECV_SIZE = 4096
 SCHEME = "kuyil"
 

@@ -4,11 +4,10 @@ import select
 import socket
 import time
 
-from kuyil.client import ClientConnection
+from kuyil import HOST, PORT
+from kuyil.connection import ClientConnection
 from kuyil.store import store
 
-HOST = "127.0.0.1"
-PORT = 6380
 MAX_EVENTS = 100
 POLL_TIMEOUT = 1.0
 
@@ -212,3 +211,16 @@ class EpollServer:
 
         self._epoll.close()
         self._server.close()
+
+
+def main() -> None:
+    """Start Kuyil's Linux epoll-based server."""
+    server = EpollServer()
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        print("\nKuyil epoll server stopped.")
+
+
+if __name__ == "__main__":
+    main()
