@@ -8,6 +8,11 @@ Learnings collected while reimplementing Redis internals.
 - **MessagePack instead of RESP** — typed wire protocol, so command args
   may arrive as real ints/floats, not just bytes. Consequence: Kuyil is
   not a drop-in Redis replacement and needs its own client.
+- **`kuyil://` connection URLs** — like `redis://`/`rediss://`, the CLI
+  takes a scheme-prefixed URL (`kuyil://host[:port]`). It is a
+  client-side convention only: the URL is parsed into host/port before
+  opening the socket; nothing goes on the wire. No `kuyils://` — that
+  would mean TLS.
 - **Expires index instead of radix tree** — Kuyil samples TTL keys via a
   dense list + position map (O(1) sample and delete). A compressed radix
   tree keyed by name (the Redis 7 `db->expires` design) was also
