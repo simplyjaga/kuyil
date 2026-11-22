@@ -2,20 +2,38 @@
 
 import shlex
 import socket
+import sys
+from urllib.parse import urlparse
 
 from kuyil.protocol import MessageDecoder, encode_message
 
 HOST = "127.0.0.1"
 PORT = 6380
 RECV_SIZE = 4096
+SCHEME = "kuyil"
+
+
+def parse_target(argv: list[str]) -> tuple[str, int]:
+    """Resolve the server address from an optional kuyil:// URL argument."""
+    if len(argv) < 2:
+        return HOST, PORT
+
+    parsed = urlparse(argv[1])
+    if parsed.scheme != SCHEME:
+        sys.exit(
+            f"unsupported scheme '{parsed.scheme or argv[1]}' — "
+            f"expected {SCHEME}://host[:port]"
+        )
+    return parsed.hostname or HOST, parsed.port or PORT
 
 
 def main() -> None:
+    host, port = parse_target(sys.argv)
     decoder = MessageDecoder()
 
     try:
-        with socket.create_connection((HOST, PORT)) as conn:
-            print(f"Connected to Kuyil at {HOST}:{PORT}")
+        with socket.create_connection((host, port)) as conn:
+            print(f"Connected to Kuyil at {host}:{port}")
             print("Type PING or QUIT to exit.")
 
             while True:
