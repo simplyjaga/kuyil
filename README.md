@@ -15,7 +15,7 @@ python3 -m venv .venv
 ## Running
 
 ```bash
-.venv/bin/python -m kuyil.event_loop     # epoll-based server (recommended)
+.venv/bin/python -m kuyil.epoll_server   # epoll-based server (recommended)
 .venv/bin/python -m kuyil.server         # simple blocking server
 .venv/bin/python -m kuyil.cli            # interactive client (localhost)
 .venv/bin/python -m kuyil.cli kuyil://localhost:6380   # explicit target
