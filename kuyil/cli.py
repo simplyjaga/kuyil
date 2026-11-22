@@ -10,6 +10,7 @@ from kuyil.protocol import MessageDecoder, encode_message
 
 RECV_SIZE = 4096
 SCHEME = "kuyil"
+PIPE_SEPARATOR = "|"
 
 
 def parse_target(argv: list[str]) -> tuple[str, int]:
@@ -33,7 +34,7 @@ def main() -> None:
     try:
         with socket.create_connection((host, port)) as conn:
             print(f"Connected to Kuyil at {host}:{port}")
-            print("Type PING or QUIT to exit.")
+            print("Type commands, QUIT to exit. Separate commands with | to pipeline.")
 
             while True:
                 try:
@@ -45,32 +46,32 @@ def main() -> None:
                     continue
 
                 try:
-                    command = shlex.split(line)
+                    commands = [shlex.split(part) for part in line.split(PIPE_SEPARATOR)]
                 except ValueError as exc:
                     print(f"Input error: {exc}")
                     continue
 
-                if not command:
+                commands = [command for command in commands if command]
+
+                if not commands:
                     continue
 
-                if command[0].upper() == "QUIT":
+                if len(commands) == 1 and commands[0][0].upper() == "QUIT":
                     break
 
-                conn.sendall(encode_message(command))
+                conn.sendall(b"".join(encode_message(command) for command in commands))
 
-                while True:
+                received = 0
+                while received < len(commands):
                     data = conn.recv(RECV_SIZE)
 
                     if not data:
                         print("Server disconnected.")
                         return
 
-                    responses = decoder.feed(data)
-
-                    if responses:
-                        for response in responses:
-                            print(response)
-                        break
+                    for response in decoder.feed(data):
+                        received += 1
+                        print(response)
 
     except ConnectionRefusedError:
         print("Could not connect. Is the Kuyil server running?")

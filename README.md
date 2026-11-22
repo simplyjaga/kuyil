@@ -49,3 +49,14 @@ kuyil> TTL session
 kuyil> DEL session
 1
 ```
+
+### Pipelining
+
+Separate commands with `|` to send them in a single round trip:
+
+```
+kuyil> PING | SET batch 1 | GET batch
+PONG
+OK
+1
+```
