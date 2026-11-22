@@ -8,7 +8,7 @@ Bhayani's Redis Internals series.
 - Python lives in an isolated venv at `.venv/` — never install into
   system Python. Install deps: `.venv/bin/pip install -r requirements.txt`
 - Run from the repo root (package imports require it):
-  - `.venv/bin/python -m kuyil.async_server` — epoll server on :6380
+  - `.venv/bin/python -m kuyil.event_loop` — epoll server on :6380
   - `.venv/bin/python -m kuyil.server` — blocking server variant
   - `.venv/bin/python -m kuyil.cli [kuyil://host[:port]]` — interactive
     `kuyil>` client
