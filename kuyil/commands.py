@@ -2,6 +2,7 @@
 
 import time
 
+from kuyil.aof import aof
 from kuyil.store import store
 
 
@@ -43,6 +44,9 @@ def _handle_set(request: list) -> object:
             return "ERR syntax error"
 
     store.set(key, value, expires_at=expires_at)
+    aof.record(["SET", key, value])
+    if expires_at is not None:
+        aof.record(["EXPIREAT", key, expires_at])
     return "OK"
 
 
@@ -62,7 +66,10 @@ def _handle_del(request: list) -> object:
     if len(request) < 2:
         return "ERR wrong number of arguments for 'del' command"
 
-    return sum(1 for key in request[1:] if store.delete(key))
+    deleted = sum(1 for key in request[1:] if store.delete(key))
+    if deleted:
+        aof.record(request)
+    return deleted
 
 
 def _handle_expire(request: list) -> object:
@@ -79,9 +86,38 @@ def _handle_expire(request: list) -> object:
     except (TypeError, ValueError):
         return "ERR value is not an integer or out of range"
 
+    deadline = time.time() + seconds
     if seconds <= 0:
-        return 1 if store.delete(key) else 0
-    return 1 if store.set_expiry(key, time.time() + seconds) else 0
+        deleted = store.delete(key)
+        if deleted:
+            aof.record(["EXPIREAT", key, deadline])
+        return 1 if deleted else 0
+    if not store.set_expiry(key, deadline):
+        return 0
+    aof.record(["EXPIREAT", key, deadline])
+    return 1
+
+
+def _handle_expireat(request: list) -> object:
+    """EXPIREAT key unix-seconds — absolute deadline; 1/0 like EXPIRE."""
+    if len(request) != 3:
+        return "ERR wrong number of arguments for 'expireat' command"
+
+    key = request[1]
+    try:
+        deadline = float(request[2])
+    except (TypeError, ValueError):
+        return "ERR value is not an integer or out of range"
+
+    if deadline <= time.time():
+        deleted = store.delete(key)
+        if deleted:
+            aof.record(["EXPIREAT", key, deadline])
+        return 1 if deleted else 0
+    if not store.set_expiry(key, deadline):
+        return 0
+    aof.record(["EXPIREAT", key, deadline])
+    return 1
 
 
 def _handle_ttl(request: list) -> object:
@@ -129,5 +165,8 @@ def handle_command(request: object) -> object:
 
     if name == "EXPIRE":
         return _handle_expire(request)
+
+    if name == "EXPIREAT":
+        return _handle_expireat(request)
 
     return f"ERR unknown command '{name}'"

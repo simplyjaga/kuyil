@@ -22,6 +22,13 @@ Bhayani's Redis Internals series.
 - Commands arrive as MessagePack lists, e.g. `["SET", "k", "v", "EX", 5]`;
   args may be native ints/floats, not just strings.
 
+## Persistence
+
+- Writes are appended to `kuyil.aof` (gitignored) in the repo's cwd and
+  replayed on server startup — delete the file to start with empty state.
+- `kuyil/aof.py` owns record/flush/fsync; a daemon thread fsyncs ~1/sec.
+  Relative TTLs are logged as absolute `EXPIREAT` for deterministic replay.
+
 ## Conventions
 
 - Feature work goes on a branch, opened as a PR, and squash-merged to

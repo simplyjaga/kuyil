@@ -33,6 +33,7 @@ Redis ecosystem — host defaults to `127.0.0.1`, port to `6380`.
 | `GET key` | Return the value, or nil if missing/expired |
 | `TTL key` | Seconds until expiry; `-1` no expiry, `-2` missing |
 | `EXPIRE key seconds` | Set a deadline on an existing key (`1`/`0`) |
+| `EXPIREAT key unix-seconds` | Set an absolute deadline (`1`/`0`) |
 | `DEL key [key ...]` | Delete keys; returns count removed |
 
 ### Example session
@@ -60,3 +61,21 @@ PONG
 OK
 1
 ```
+
+## Persistence
+
+Every mutating command is appended to `kuyil.aof` (msgpack frames) and
+replayed on startup — roughly Redis's `appendfsync everysec`: writes are
+buffered and flushed once per event-loop iteration, while a background
+thread `fsync`s about once a second.
+
+```
+kuyil> SET name jaga
+OK          # restart the server here
+kuyil> GET name
+jaga        # restored from kuyil.aof
+```
+
+`SET ... EX` and `EXPIRE` are logged as `EXPIREAT` with the absolute
+deadline so a replay doesn't restart the clock. `kuyil.aof` is
+gitignored — delete it to start clean.
