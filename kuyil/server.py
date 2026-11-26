@@ -1,7 +1,6 @@
 import socket
 
 from kuyil import HOST, PORT
-from kuyil.aof import aof
 from kuyil.commands import handle_command
 from kuyil.protocol import MessageDecoder, encode_message
 
@@ -9,10 +8,6 @@ RECV_SIZE = 4096
 
 
 def main() -> None:
-    replayed = aof.load(handle_command)
-    if replayed:
-        print(f"AOF: replayed {replayed} commands")
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.bind((HOST, PORT))
         server.listen()
@@ -36,7 +31,6 @@ def main() -> None:
                         print(f"Command: {request}")
                         response = handle_command(request)
                         conn.sendall(encode_message(response))
-                    aof.flush()
 
             print("Connection terminated")
 
