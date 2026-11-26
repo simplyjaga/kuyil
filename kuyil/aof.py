@@ -10,17 +10,20 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from kuyil.protocol import MessageDecoder, encode_message
 
-AOF_PATH = "kuyil.aof"
+# Anchored to the repo root, not the process cwd — a server launched from
+# elsewhere still reads and writes the same kuyil.aof.
+AOF_PATH = Path(__file__).parent.parent / "kuyil.aof"
 FSYNC_INTERVAL = 1.0
 
 
 class Aof:
     """Append-only command log with buffered writes and periodic fsync."""
 
-    def __init__(self, path: str = AOF_PATH) -> None:
+    def __init__(self, path: Path = AOF_PATH) -> None:
         self._path = path
         self._buffer = bytearray()
         self._replaying = False

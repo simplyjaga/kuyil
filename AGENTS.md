@@ -24,8 +24,8 @@ Bhayani's Redis Internals series.
 
 ## Persistence
 
-- Writes are appended to `kuyil.aof` (gitignored) in the repo's cwd and
-  replayed on server startup — delete the file to start with empty state.
+- Writes are appended to `kuyil.aof` (gitignored), anchored at the repo
+  root regardless of launch cwd — delete the file to start empty.
 - `kuyil/aof.py` owns record/flush/fsync; a daemon thread fsyncs ~1/sec.
   Relative TTLs are logged as absolute `EXPIREAT` for deterministic replay.
 
