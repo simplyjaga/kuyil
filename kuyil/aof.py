@@ -45,15 +45,21 @@ class Aof:
         self._file.flush()
 
     def load(self, replay: Callable[[list], object]) -> int:
-        """Replay every logged command; a torn final frame stops the replay."""
+        """Replay every logged command; a torn final frame stops the replay.
+
+        Reads in chunks rather than slurping the whole file — a multi-GB
+        AOF must not need multi-GB of RAM to load. Split frames simply
+        stay buffered in the decoder until the rest arrives.
+        """
         self._replaying = True
         decoder = MessageDecoder()
         count = 0
         try:
             with open(self._path, "rb") as file:
-                for command in decoder.feed(file.read()):
-                    replay(command)
-                    count += 1
+                while chunk := file.read(64 * 1024):
+                    for command in decoder.feed(chunk):
+                        replay(command)
+                        count += 1
         finally:
             self._replaying = False
         return count

@@ -115,5 +115,10 @@ Learnings collected while reimplementing Redis internals.
   the AOF mainly for replica consistency.)
 - Crash tolerance is free: msgpack is self-delimiting, so a torn final
   frame simply stops the replay — no checksum/length framing needed.
+- load() reads in 64 KB chunks through the same incremental decoder —
+  file.read() of a multi-GB AOF would need multi-GB RAM plus a Python
+  object list far larger than the raw bytes. Chunked feeding costs the
+  same wall time at ~64 KB working memory; split frames stay buffered
+  in the Unpacker, identical to split TCP reads.
 - No AOF rewrite yet: compaction via fork() (child serializes a COW
   snapshot, parent keeps serving) is the planned follow-up.
