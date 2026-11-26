@@ -5,6 +5,8 @@ import socket
 import time
 
 from kuyil import HOST, PORT
+from kuyil.aof import aof
+from kuyil.commands import handle_command
 from kuyil.connection import ClientConnection
 from kuyil.store import store
 
@@ -90,6 +92,10 @@ class EpollServer:
                         next_expire_cycle = (
                             time.monotonic() + ACTIVE_EXPIRE_INTERVAL
                         )
+
+                # beforeSleep: one write() per iteration for all buffered
+                # AOF commands, before blocking in poll again.
+                aof.flush()
         finally:
             self.close()
 
@@ -215,6 +221,9 @@ class EpollServer:
 
 def main() -> None:
     """Start Kuyil's Linux epoll-based server."""
+    replayed = aof.load(handle_command)
+    if replayed:
+        print(f"AOF: replayed {replayed} commands")
     server = EpollServer()
     try:
         server.run()

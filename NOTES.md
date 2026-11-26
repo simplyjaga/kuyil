@@ -19,6 +19,12 @@ Learnings collected while reimplementing Redis internals.
   implemented and evaluated — it folds dict and index into one structure
   and samples via random walks — but the simpler list index was kept;
   the rax work remains in git history.
+- **AOF: buffered flush + canonicalized TTLs** — the series appends each
+  write command to the file as received. Kuyil buffers record()s and
+  does one write() per event-loop iteration (Redis's beforeSleep), and
+  rewrites relative expirations into absolute EXPIREAT deadlines before
+  logging — matching real Redis's PEXPIREAT rewrite so a replay doesn't
+  restart the clock.
 
 ## Topic notes
 
@@ -88,3 +94,31 @@ Learnings collected while reimplementing Redis internals.
 - Response pairing is positional — like RESP, there are no request IDs;
   TCP byte order guarantees the k-th response belongs to the k-th
   request.
+
+### Persistence (AOF)
+
+- Three layers, three costs — record() appends to a memory buffer per
+  write command (~µs, no syscall); flush() does one write() per
+  event-loop iteration into the OS page cache (Redis's beforeSleep); a
+  dedicated thread calls os.fsync() ~once/second (appendfsync everysec).
+- The fsync thread is our mini-BIO: it touches only the file descriptor,
+  never _data/_expires — the legitimate thread exception (like Redis's
+  bio.c: fsync, close, lazyfree), so the single-threaded-data rule holds.
+- write() vs fsync() need no locks: the page cache is kernel-synchronized
+  shared state — a racing write simply lands in the next fsync window,
+  inside the "lose ≤1s" promise.
+- Canonicalization before logging: EXPIRE/SET-EX become EXPIREAT with the
+  absolute deadline — deterministic replay (real Redis logs PEXPIREAT).
+  EXPIREAT is a new user-facing command for this.
+- Expiry deletions are NOT logged: replaying SET + EXPIREAT reproduces
+  the expiration by itself. (Real Redis propagates expired-key DELs to
+  the AOF mainly for replica consistency.)
+- Crash tolerance is free: msgpack is self-delimiting, so a torn final
+  frame simply stops the replay — no checksum/length framing needed.
+- load() reads in 64 KB chunks through the same incremental decoder —
+  file.read() of a multi-GB AOF would need multi-GB RAM plus a Python
+  object list far larger than the raw bytes. Chunked feeding costs the
+  same wall time at ~64 KB working memory; split frames stay buffered
+  in the Unpacker, identical to split TCP reads.
+- No AOF rewrite yet: compaction via fork() (child serializes a COW
+  snapshot, parent keeps serving) is the planned follow-up.
